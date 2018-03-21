@@ -36,18 +36,42 @@ class Download:
 		self.url = 'https://ndar.nih.gov/DataManager/dataManager'
 		self.directory = directory
 		self.download_queue = queue.Queue()
+		self.and_path_list = set()
+		self.or_path_list = set()
+		self.path_list = set()
 
 		if args.txt:
-			self.path_list = []
-			with open(args.paths[0]) as tsv:
-				tsv = csv.reader(tsv, delimiter="\t")
+			with open(args.paths[0]) as tsv_file:
+				tsv = csv.reader(tsv_file, delimiter="\t")
 				header = next(tsv)
-				image_description = header.index('image_description')
-				image_file = header.index('image_file')
 
-				for row in tsv:
-					if row[image_description] == 'MRI':
-						self.path_list.append(row[image_file])
+				if args.filters:
+					multiple_filters = False
+					for f in args.filters:
+						filter = f.split(',')
+						column = filter[0]
+						value = filter[1]
+						column_index = header.index(column)
+						image_file = header.index('image_file')
+						for row in tsv:
+							if multiple_filters and row[column_index] == value:
+								if row[image_file] in self.or_path_list:
+									self.and_path_list.add(row[image_file])
+							if row[column_index] == value:
+								self.or_path_list.add(row[image_file])
+
+						tsv_file.seek(0)
+						multiple_filters = True
+				else:
+					for row in tsv:
+						self.path_list.add(row)
+
+			print(len(self.and_path_list), 'results with all filters found.')
+			print(len(self.or_path_list), 'results with either filter found')
+
+			# change to self.path_list = self.or_path_list if you would like either filter applied on data
+			self.path_list = self.and_path_list
+
 		else:
 			self.path_list = args.paths
 
@@ -129,6 +153,10 @@ def parse_args():
 
 	parser.add_argument('-t', '--txt', action='store_true',
 	                    help='Flags that a  data structure text file has been entered from where to download S3 files.')
+
+	parser.add_argument('-f', '--filters', metavar='<filter_list>', type=str, nargs='+', action='store',
+	                    help='Enter the column name you want to filter by and the value of interest, separated by a comma. '
+	                         'You may enter multiple filters, each separated by a space. EX: image_description,fMRI gender,F')
 
 	parser.add_argument('-d', '--directory', metavar='<arg>', type=str, nargs=1, action='store',
 	                    help='Enter an alternate full directory path where you would like your files to be saved.')
