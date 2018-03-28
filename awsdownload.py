@@ -36,8 +36,6 @@ class Download:
 		self.url = 'https://ndar.nih.gov/DataManager/dataManager'
 		self.directory = directory
 		self.download_queue = queue.Queue()
-		self.and_path_list = set()
-		self.or_path_list = set()
 		self.path_list = set()
 
 		if args.txt:
@@ -46,45 +44,33 @@ class Download:
 				header = next(tsv)
 
 				if args.filters:
-					multiple_filters = False
-					for f in args.filters:
-						filter = f.split(',')
-						column = filter[0]
-						value = filter[1]
-						column_index = header.index(column)
-						image_file = header.index('image_file')
-						for row in tsv:
-							if multiple_filters and row[column_index] == value:
-								if row[image_file] in self.or_path_list:
-									self.and_path_list.add(row[image_file])
-							if row[column_index] == value:
-								self.or_path_list.add(row[image_file])
-
-						tsv_file.seek(0)
-						multiple_filters = True
-				else:
+					print(args.filters)
+					filter = args.filters[0]
+					filter = filter.split(',')
+					column = filter[0]
+					value = filter[1]
+					column_index = header.index(column)
+					image_file = header.index('image_file')
 					for row in tsv:
-						self.path_list.add(row)
-
-			print(len(self.and_path_list), 'results with all filters found.')
-			print(len(self.or_path_list), 'results with either filter found')
-
-			# change to self.path_list = self.or_path_list if you would like either filter applied on data
-			self.path_list = self.and_path_list
+						if row[column_index] == value:
+							self.path_list.add(row[image_file])
+				else:
+					image_file = header.index('image_file')
+					for row in tsv:
+						self.path_list.add(row[image_file])
 
 		else:
 			self.path_list = args.paths
 
 	def queuing(self):
+		cpu_num = multiprocessing.cpu_count()
+		if cpu_num > 1:
+			cpu_num -= 1
+		for x in range(cpu_num):
+			worker = Download.DownloadTask(self)
+			worker.daemon = True
+			worker.start()
 		for path in self.path_list:
-			cpu_num = multiprocessing.cpu_count()
-			if cpu_num > 1:
-				cpu_num -= 1
-			for x in range(cpu_num):
-				worker = Download.DownloadTask(self)
-				worker.daemon = True
-				worker.start()
-
 			self.download_queue.put(path)
 		self.download_queue.join()
 		print('Finished downloading all files.')
@@ -156,7 +142,7 @@ def parse_args():
 
 	parser.add_argument('-f', '--filters', metavar='<filter_list>', type=str, nargs='+', action='store',
 	                    help='Enter the column name you want to filter by and the value of interest, separated by a comma. '
-	                         'You may enter multiple filters, each separated by a space. EX: image_description,fMRI gender,F')
+	                         'EX: image_description,fMRI. Can only apply one filter as of now.')
 
 	parser.add_argument('-d', '--directory', metavar='<arg>', type=str, nargs=1, action='store',
 	                    help='Enter an alternate full directory path where you would like your files to be saved.')
@@ -173,7 +159,7 @@ if __name__ == "__main__":
 	if args.directory:
 		dir = args.directory[0]
 	else:
-		dir = os.path.join(os.path.expanduser('~'), 'ABCD_downloads')
+		dir = os.path.join(os.path.expanduser('~'), 'AWS_downloads')
 
 	s3Download = Download(dir)
 	s3Download.queuing()
