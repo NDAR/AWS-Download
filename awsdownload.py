@@ -38,7 +38,7 @@ class Download:
 		self.download_queue = queue.Queue()
 		self.path_list = set()
 
-		if args.txt:
+		if args.datastructure:
 			with open(args.paths[0]) as tsv_file:
 				tsv = csv.reader(tsv_file, delimiter="\t")
 				header = next(tsv)
@@ -58,6 +58,11 @@ class Download:
 					image_file = header.index('image_file')
 					for row in tsv:
 						self.path_list.add(row[image_file])
+		elif args.txt:
+			with open(args.paths[0]) as tsv_file:
+				tsv = csv.reader(tsv_file, delimiter="\t")
+				for row in tsv:
+					self.path_list.add(row[0])
 
 		else:
 			self.path_list = args.paths
@@ -118,6 +123,9 @@ class Download:
 					if error_code == 404:
 						print('This path is incorrect:', path, 'Please try again.\n')
 						pass
+					if error_code == 403:
+						print('This is a private bucket. Please contact NDAR for help.\n')
+						pass
 				self.download_queue.task_done()
 
 
@@ -138,6 +146,9 @@ def parse_args():
 	                    help='NDA password')
 
 	parser.add_argument('-t', '--txt', action='store_true',
+	                    help='Flags that a text file has been entered from where to download S3 files.')
+
+	parser.add_argument('-s', '--datastructure', action='store_true',
 	                    help='Flags that a  data structure text file has been entered from where to download S3 files.')
 
 	parser.add_argument('-f', '--filters', metavar='<filter_list>', type=str, nargs='+', action='store',
