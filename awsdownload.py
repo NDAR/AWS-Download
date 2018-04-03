@@ -38,6 +38,8 @@ class Download:
 		self.download_queue = queue.Queue()
 		self.path_list = set()
 
+	def get_links(self):
+
 		if args.datastructure:
 			with open(args.paths[0]) as tsv_file:
 				tsv = csv.reader(tsv_file, delimiter="\t")
@@ -173,4 +175,5 @@ if __name__ == "__main__":
 		dir = os.path.join(os.path.expanduser('~'), 'AWS_downloads')
 
 	s3Download = Download(dir)
+	s3Download.get_links()
 	s3Download.queuing()
