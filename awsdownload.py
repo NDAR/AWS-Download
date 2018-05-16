@@ -20,6 +20,8 @@ import threading
 import multiprocessing
 import boto3
 import botocore
+import datetime
+import glob
 
 class Download:
 
@@ -69,6 +71,18 @@ class Download:
 		else:
 			self.path_list = args.paths
 
+	def check_time(self):
+		now_time = datetime.datetime.now()
+		if now_time >= self.refresh_time:
+			self.get_tokens()
+
+	def get_tokens(self):
+		start_time = datetime.datetime.now()
+		generator = NDATokenGenerator(self.url)
+		self.token = generator.generate_token(self.username, self.password)
+		self.refresh_time = start_time + datetime.timedelta(hours=23, minutes=55)
+
+
 	def queuing(self):
 		cpu_num = multiprocessing.cpu_count()
 		if cpu_num > 1:
@@ -91,12 +105,13 @@ class Download:
 			self.username = Download.username
 			self.password = Download.password
 			self.directory = Download.directory
+			self.access_key = Download.token.access_key
+			self.secret_key = Download.token.secret_key
+			self.session = Download.token.session
+
 
 		def run(self):
 			while True:
-				generator = NDATokenGenerator(self.url)
-				token = generator.generate_token(self.username, self.password)
-
 				path = self.download_queue.get()
 
 				filename = path.split('/')
@@ -108,26 +123,43 @@ class Download:
 				self.newdir = os.path.join(self.directory, self.newdir)
 				self.local_filename = os.path.join(self.directory, self.key)
 
-				if not os.path.exists(self.newdir):
-					os.makedirs(self.newdir)
+				downloaded = False
 
-				session = boto3.session.Session(token.access_key,
-				                                token.secret_key,
-				                                token.session)
-				s3client = session.client('s3')
-				try:
-					s3client.download_file(self.bucket, self.key, self.local_filename)
-					print('downloaded: ', path)
-				except botocore.exceptions.ClientError as e:
-					# If a client error is thrown, then check that it was a 404 error.
-					# If it was a 404 error, then the bucket does not exist.
-					error_code = int(e.response['Error']['Code'])
-					if error_code == 404:
-						print('This path is incorrect:', path, 'Please try again.\n')
-						pass
-					if error_code == 403:
-						print('This is a private bucket. Please contact NDAR for help.\n')
-						pass
+                # check previous downloads
+				if args.resume:
+					prev_directory = args.resume[0]
+					prev_local_filename = os.path.join(prev_directory, self.key)
+					if os.path.isfile(prev_local_filename):
+						#print(prev_local_filename, 'is already downloaded.')
+						downloaded = True
+
+
+				if not downloaded:
+					if not os.path.exists(self.newdir):
+						os.makedirs(self.newdir)
+
+					# check tokens
+					self.download.check_time()
+
+					session = boto3.session.Session(self.access_key,
+					                                self.secret_key,
+					                                self.session)
+					s3client = session.client('s3')
+
+
+					try:
+						s3client.download_file(self.bucket, self.key, self.local_filename)
+						print('downloaded: ', path)
+					except botocore.exceptions.ClientError as e:
+						# If a client error is thrown, then check that it was a 404 error.
+						# If it was a 404 error, then the bucket does not exist.
+						error_code = int(e.response['Error']['Code'])
+						if error_code == 404:
+							print('This path is incorrect:', path, 'Please try again.\n')
+							pass
+						if error_code == 403:
+							print('This is a private bucket. Please contact NDAR for help.\n')
+							pass
 				self.download_queue.task_done()
 
 
@@ -157,6 +189,10 @@ def parse_args():
 	                    help='Enter the column name you want to filter by and the value of interest, separated by a comma. '
 	                         'EX: image_description,fMRI. Can only apply one filter as of now.')
 
+	parser.add_argument('-r', '--resume', metavar='<arg>', type=str, nargs=1, action='store',
+	                    help='Flags to restart a download process. If you already have some files downloaded, you must enter the directory where they are saved.')
+
+
 	parser.add_argument('-d', '--directory', metavar='<arg>', type=str, nargs=1, action='store',
 	                    help='Enter an alternate full directory path where you would like your files to be saved.')
 
@@ -176,4 +212,5 @@ if __name__ == "__main__":
 
 	s3Download = Download(dir)
 	s3Download.get_links()
+	s3Download.get_tokens()
 	s3Download.queuing()
