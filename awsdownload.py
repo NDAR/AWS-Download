@@ -21,7 +21,9 @@ import multiprocessing
 import boto3
 import botocore
 import datetime
-import glob
+import requests
+import xml.etree.ElementTree as ET
+
 
 class Download:
 
@@ -40,28 +42,53 @@ class Download:
 		self.download_queue = queue.Queue()
 		self.path_list = set()
 
+
+	def useDataManager(self):
+		# do something with DataManager
+		payload = ('<?xml version="1.0" ?>\n' +
+		           '<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">\n' +
+		           '<S:Body> <ns3:QueryPackageFileElement\n' +
+		           'xmlns:ns4="http://dataManagerService"\n' +
+		           'xmlns:ns3="http://gov/nih/ndar/ws/datamanager/server/bean/jaxb"\n' +
+		           'xmlns:ns2="http://dataManager/transfer/model">\n' +
+		           '<packageId>' + self.package + '</packageId>\n' +
+		           '<associated>true</associated>\n' +
+		           '</ns3:QueryPackageFileElement>\n' +
+		           '</S:Body>\n' +
+		           '</S:Envelope>')
+
+		headers = {
+			'Content-Type': "text/xml"
+		}
+
+		r = requests.request("POST", self.url, data=payload, headers=headers)
+
+		root = ET.fromstring(r.text)
+
+		path = root.findall(".//path")
+
+		for element in path:
+			file = 's3://' + element.text
+			self.path_list.add(file)
+
+
+	def useDataStructure(self):
+		with open(self.dataStructure) as tsv_file:
+			tsv = csv.reader(tsv_file, delimiter="\t")
+			for row in tsv:
+				for element in row:
+					if element.startswith('s3://'):
+						self.path_list.add(element)
+
 	def get_links(self):
+		if args.packageNumber:
+			self.package = args.paths[0]
+			self.useDataManager()
 
-		if args.datastructure:
-			with open(args.paths[0]) as tsv_file:
-				tsv = csv.reader(tsv_file, delimiter="\t")
-				header = next(tsv)
+		elif args.datastructure:
+			self.dataStructure = args.paths[0]
+			self.useDataStructure()
 
-				if args.filters:
-					print(args.filters)
-					filter = args.filters[0]
-					filter = filter.split(',')
-					column = filter[0]
-					value = filter[1]
-					column_index = header.index(column)
-					image_file = header.index('image_file')
-					for row in tsv:
-						if row[column_index] == value:
-							self.path_list.add(row[image_file])
-				else:
-					image_file = header.index('image_file')
-					for row in tsv:
-						self.path_list.add(row[image_file])
 		elif args.txt:
 			with open(args.paths[0]) as tsv_file:
 				tsv = csv.reader(tsv_file, delimiter="\t")
@@ -133,10 +160,9 @@ class Download:
 						#print(prev_local_filename, 'is already downloaded.')
 						downloaded = True
 
-
 				if not downloaded:
 					if not os.path.exists(self.newdir):
-						os.makedirs(self.newdir)
+						os.makedirs(self.newdir, exist_ok=True)
 
 					# check tokens
 					self.download.check_time()
@@ -173,11 +199,8 @@ def parse_args():
 	parser.add_argument('paths', metavar='<S3_path_list>', type=str, nargs='+', action='store',
 	                    help='Will download all S3 files to your local drive')
 
-	parser.add_argument('-u', '--username', metavar='<arg>', type=str, nargs=1, action='store',
-	                    help='NDA username')
-
-	parser.add_argument('-p', '--password', metavar='<arg>', type=str, nargs=1, action='store',
-	                    help='NDA password')
+	parser.add_argument('-n', '--packageNumber', action='store_true',
+	                    help='Flags to download all S3 files in package.')
 
 	parser.add_argument('-t', '--txt', action='store_true',
 	                    help='Flags that a text file has been entered from where to download S3 files.')
@@ -185,13 +208,14 @@ def parse_args():
 	parser.add_argument('-s', '--datastructure', action='store_true',
 	                    help='Flags that a  data structure text file has been entered from where to download S3 files.')
 
-	parser.add_argument('-f', '--filters', metavar='<filter_list>', type=str, nargs='+', action='store',
-	                    help='Enter the column name you want to filter by and the value of interest, separated by a comma. '
-	                         'EX: image_description,fMRI. Can only apply one filter as of now.')
-
 	parser.add_argument('-r', '--resume', metavar='<arg>', type=str, nargs=1, action='store',
 	                    help='Flags to restart a download process. If you already have some files downloaded, you must enter the directory where they are saved.')
 
+	parser.add_argument('-u', '--username', metavar='<arg>', type=str, nargs=1, action='store',
+	                    help='NDA username')
+
+	parser.add_argument('-p', '--password', metavar='<arg>', type=str, nargs=1, action='store',
+	                    help='NDA password')
 
 	parser.add_argument('-d', '--directory', metavar='<arg>', type=str, nargs=1, action='store',
 	                    help='Enter an alternate full directory path where you would like your files to be saved.')
