@@ -44,7 +44,7 @@ class Download:
 
 
 	def useDataManager(self):
-		# do something with DataManager
+		# download package files (not associated files)
 		payload = ('<?xml version="1.0" ?>\n' +
 		           '<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">\n' +
 		           '<S:Body> <ns3:QueryPackageFileElement\n' +
@@ -64,12 +64,39 @@ class Download:
 		r = requests.request("POST", self.url, data=payload, headers=headers)
 
 		root = ET.fromstring(r.text)
+		packageFiles = root.findall(".//queryPackageFiles")
+		for element in packageFiles:
+			associated = element.findall(".//isAssociated")
+			path = element.findall(".//path")
+			for a in associated:
+				if a.text == 'false':
+					for p in path:
+						file = 's3:/' + p.text
+						self.path_list.add(file)
 
-		path = root.findall(".//path")
+		print('Downloading package files for package {}.'.format(self.package))
 
-		for element in path:
-			file = 's3://' + element.text
-			self.path_list.add(file)
+
+	def searchForDataStructure(self):
+		# download associated files listed in data structures
+		all_paths = self.path_list
+		self.path_list = set()
+
+		for path in all_paths:
+			if 'Package_{}'.format(self.package) in path:
+				file = path.split('/')[-1]
+				shortName = file.split('.')[0]
+				try:
+					ddr = requests.request("GET", "https://ndar.nih.gov/api/datadictionary/v2/datastructure/{}".format(shortName))
+					ddr.raise_for_status()
+					dataStructureFile = path.split('gpop/')[1]
+					dataStructureFile = os.path.join(self.directory, dataStructureFile)
+					self.dataStructure = dataStructureFile
+					self.useDataStructure()
+
+				except requests.exceptions.HTTPError as e:
+					if e.response.status_code == 404:
+						continue
 
 
 	def useDataStructure(self):
@@ -80,10 +107,12 @@ class Download:
 					if element.startswith('s3://'):
 						self.path_list.add(element)
 
+
 	def get_links(self):
 		if args.packageNumber:
 			self.package = args.paths[0]
 			self.useDataManager()
+
 
 		elif args.datastructure:
 			self.dataStructure = args.paths[0]
@@ -162,7 +191,7 @@ class Download:
 
 				if not downloaded:
 					if not os.path.exists(self.newdir):
-						os.makedirs(self.newdir, exist_ok=True)
+						os.makedirs(self.newdir)
 
 					# check tokens
 					self.download.check_time()
@@ -184,7 +213,7 @@ class Download:
 							print('This path is incorrect:', path, 'Please try again.\n')
 							pass
 						if error_code == 403:
-							print('This is a private bucket. Please contact NDAR for help.\n')
+							print('This is a private bucket. Please contact NDAR for help:', path, '\n')
 							pass
 				self.download_queue.task_done()
 
@@ -238,3 +267,8 @@ if __name__ == "__main__":
 	s3Download.get_links()
 	s3Download.get_tokens()
 	s3Download.queuing()
+	if args.packageNumber:
+		print('\nDownloading associated files.\n')
+		s3Download.searchForDataStructure()
+		s3Download.get_tokens()
+		s3Download.queuing()
