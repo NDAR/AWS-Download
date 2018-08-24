@@ -183,7 +183,7 @@ class Download:
         start_time = datetime.datetime.now()
         generator = NDATokenGenerator(self.url)
         self.token = generator.generate_token(self.username, self.password)
-        self.refresh_time = start_time + datetime.timedelta(hours=23, minutes=55)
+        self.refresh_time = start_time + datetime.timedelta(hours=23, minutes=00)
 
         self.access_key = self.token.access_key
         self.secret_key = self.token.secret_key
