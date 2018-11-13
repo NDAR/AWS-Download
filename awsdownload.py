@@ -183,7 +183,7 @@ class Download:
         start_time = datetime.datetime.now()
         generator = NDATokenGenerator(self.url)
         self.token = generator.generate_token(self.username, self.password)
-        self.refresh_time = start_time + datetime.timedelta(hours=23, minutes=00)
+        self.refresh_time = start_time + datetime.timedelta(hours=23, minutes=55)
 
         self.access_key = self.token.access_key
         self.secret_key = self.token.secret_key
@@ -192,19 +192,19 @@ class Download:
     def download_path(self, path):
         filename = path.split('/')
         self.filename = filename[3:]
-        self.key = '/'.join(self.filename)
-        self.bucket = filename[2]
+        key = '/'.join(self.filename)
+        bucket = filename[2]
         self.newdir = filename[3:-1]
         self.newdir = '/'.join(self.newdir)
         self.newdir = os.path.join(self.directory, self.newdir)
-        local_filename = os.path.join(self.directory, self.key)
+        local_filename = os.path.join(self.directory, key)
 
         downloaded = False
 
         # check previous downloads
         if args.resume:
             prev_directory = args.resume[0]
-            prev_local_filename = os.path.join(prev_directory, self.key)
+            prev_local_filename = os.path.join(prev_directory, key)
             if os.path.isfile(prev_local_filename):
                 # print(prev_local_filename, 'is already downloaded.')
                 downloaded = True
@@ -223,7 +223,7 @@ class Download:
             s3transfer = S3Transfer(s3client)
 
             try:
-                s3transfer.download_file(self.bucket, self.key, local_filename)
+                s3transfer.download_file(bucket, key, local_filename)
                 print('downloaded: ', path)
             except botocore.exceptions.ClientError as e:
                 # If a client error is thrown, then check that it was a 404 error.
