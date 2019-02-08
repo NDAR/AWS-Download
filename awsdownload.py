@@ -1,4 +1,4 @@
-# pip install git+https://github.com/NDAR/nda_aws_token_generator.git#egg=nda-aws-token-generator&subdirectory=python
+# pip install 'git+https://github.com/NDAR/nda_aws_token_generator.git#egg=nda-aws-token-generator&subdirectory=python'
 # cd ~/nda_aws_token_generator/python/
 # sudo python setup.py install
 
