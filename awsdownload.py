@@ -1,4 +1,4 @@
-# pip install git+https://github.com/NDAR/nda_aws_token_generator.git#egg=nda-aws-token-generator&subdirectory=python
+# pip install 'git+https://github.com/NDAR/nda_aws_token_generator.git#egg=nda-aws-token-generator&subdirectory=python'
 # cd ~/nda_aws_token_generator/python/
 # sudo python setup.py install
 
@@ -71,24 +71,46 @@ class ThreadPool:
 class Download:
 
     def __init__(self, directory):
-        if args.username:
-            self.username = args.username[0]
-        else:
-            self.username = input('Enter your NIMH Data Archives username:')
-        if args.password:
-            self.password = args.password[0]
-        else:
-            self.password = getpass('Enter your NIMH Data Archives password:')
+        home = os.path.expanduser("~")
+        creds = os.path.join(home, '.aws', 'credentials')
+        print ("creds file is ",creds)
+        if not os.path.exists(creds):
+            if args.username:
+                self.username = args.username[0]
+            else:
+                self.username = input('Enter your NIMH Data Archives username:')
+            if args.password:
+                self.password = args.password[0]
+            else:
+                self.password = getpass('Enter your NIMH Data Archives password:')
+            self.access_key = None
+            self.secret_key =  None
+            self.session = None
 
+        else:
+            # populate keys
+            with open(creds) as h:
+                #strings = h.read_lines()
+                for line in h:
+#                    line = line.replace(' ','').strip()
+                    if line[0] == '[':
+                        continue
+                    var_name,var_val = line.split(' = ')
+                    print (var_name, var_val)
+                    if var_name == "aws_access_key_id":
+                        self.access_key = var_val.strip()
+                    elif var_name == "aws_secret_access_key":
+                        self.secret_key= var_val.strip()
+                    elif var_name == "aws_session_token":
+                        self.session = var_val.strip()
+            self.username = None
+            self.password = None
+            start_time = datetime.datetime.now()
+            self.refresh_time = start_time + datetime.timedelta(hours=23, minutes=55)
         self.url = 'https://ndar.nih.gov/DataManager/dataManager'
         self.directory = directory
         self.download_queue = Queue()
         self.path_list = set()
-
-        self.access_key = None
-        self.secret_key =  None
-        self.session = None
-
 
     def useDataManager(self):
         """ Download package files (not associated files) """
@@ -180,14 +202,15 @@ class Download:
             self.get_tokens()
 
     def get_tokens(self):
-        start_time = datetime.datetime.now()
-        generator = NDATokenGenerator(self.url)
-        self.token = generator.generate_token(self.username, self.password)
-        self.refresh_time = start_time + datetime.timedelta(hours=23, minutes=55)
+        if not self.username is None:
+            start_time = datetime.datetime.now()
+            generator = NDATokenGenerator(self.url)
+            self.token = generator.generate_token(self.username, self.password)
+            self.refresh_time = start_time + datetime.timedelta(hours=23, minutes=55)
 
-        self.access_key = self.token.access_key
-        self.secret_key = self.token.secret_key
-        self.session = self.token.session
+            self.access_key = self.token.access_key
+            self.secret_key = self.token.secret_key
+            self.session = self.token.session
 
     def download_path(self, path):
         filename = path.split('/')
